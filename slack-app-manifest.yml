@@ -1,0 +1,34 @@
+display_information:
+  name: Bot Inviter
+  description: Bulk-invite bots to every channel you belong to
+  background_color: '#2EB67D'
+
+features:
+  bot_user:
+    display_name: bot-inviter
+    always_online: false
+  slash_commands:
+    - command: /bot-inviter
+      # Replace with your deployed GAS web app URL (ends with /exec)
+      url: https://script.google.com/macros/s/REPLACE_WITH_DEPLOYMENT_ID/exec
+      description: Invite a bot to all channels you belong to
+      usage_hint: '[bot-alias]'
+      should_escape: false
+
+oauth_config:
+  redirect_urls:
+    # Replace with the same GAS web app URL as above
+    - https://script.google.com/macros/s/REPLACE_WITH_DEPLOYMENT_ID/exec
+  scopes:
+    bot:
+      - commands
+    user:
+      - channels:read
+      - groups:read
+      - channels:write.invites
+      - groups:write.invites
+
+settings:
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

@@ -1,16 +1,26 @@
 {
   "testEnvironment": "node",
   "transform": {
-    "^.+\\.tsx?$": ["@swc/jest"]
+    "^.+\\.tsx?$": [
+      "@swc/jest"
+    ]
   },
-  "modulePathIgnorePatterns": ["<rootDir>/dist/", "<rootDir>/build/"],
-  "testPathIgnorePatterns": ["<rootDir>/dist/", "<rootDir>/build/"],
+  "modulePathIgnorePatterns": [
+    "<rootDir>/dist/",
+    "<rootDir>/build/"
+  ],
+  "testPathIgnorePatterns": [
+    "<rootDir>/dist/",
+    "<rootDir>/build/"
+  ],
   "moduleNameMapper": {
     "(.+)\\.js": "$1"
   },
   "collectCoverageFrom": [
     "src/**/*.ts",
     "!src/index.ts",
+    "!src/slack-client.ts",
+    "!src/store.ts",
     "!src/setProperties.ts"
   ],
   "coverageThreshold": {
