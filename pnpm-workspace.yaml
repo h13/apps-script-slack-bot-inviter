@@ -1,0 +1,8 @@
+allowBuilds:
+  # @parcel/watcher (transitive dep via jest 30.5) installs its
+  # platform-specific native binary for filesystem watching.
+  '@parcel/watcher': true
+  '@swc/core': true
+  unrs-resolver: false
+overrides:
+  diff: '>=8.0.3'

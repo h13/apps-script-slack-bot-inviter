@@ -1,0 +1,108 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [dev, main]
+
+jobs:
+  deploy:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      !github.event.repository.is_template
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment: ${{ github.event.workflow_run.head_branch == 'main' && 'production' || 'development' }}
+    concurrency:
+      group: deploy-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: ${{ github.event.workflow_run.head_branch != 'main' }}
+    env:
+      SCRIPT_PROPERTIES: ${{ secrets.SCRIPT_PROPERTIES }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Pre-deploy hook
+        if: hashFiles('.github/hooks/pre-deploy.sh') != ''
+        run: bash .github/hooks/pre-deploy.sh
+        env:
+          DEPLOY_ENV: ${{ github.event.workflow_run.head_branch == 'main' && 'production' || 'development' }}
+
+      # Secret Manager mode: direct WIF (no service-account impersonation).
+      # Requires org variables GCP_WIF_PROVIDER + CLASPRC_SECRET (docs/secret-manager.md).
+      - name: Authenticate to Google Cloud (WIF)
+        if: vars.GCP_WIF_PROVIDER != ''
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+
+      - name: Fetch clasp credentials from Secret Manager
+        if: vars.GCP_WIF_PROVIDER != ''
+        id: gcp-secrets
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
+        with:
+          secrets: |-
+            clasprc:${{ vars.CLASPRC_SECRET }}
+
+      - name: Setup clasp credentials
+        env:
+          WIF_ENABLED: ${{ vars.GCP_WIF_PROVIDER != '' }}
+          CLASPRC_GCP: ${{ steps.gcp-secrets.outputs.clasprc }}
+          CLASPRC_LEGACY: ${{ secrets.CLASPRC_JSON }}
+          CLASP_JSON: ${{ secrets.CLASP_JSON }}
+        run: |
+          if [ "$WIF_ENABLED" = "true" ]; then
+            # Secret Manager mode: never fall back to the legacy secret silently.
+            CLASPRC="$CLASPRC_GCP"
+            if [ -z "$CLASPRC" ]; then
+              echo "::error::GCP_WIF_PROVIDER is set but Secret Manager returned an empty payload. Check CLASPRC_SECRET and the secret's latest version."
+              exit 1
+            fi
+          else
+            CLASPRC="$CLASPRC_LEGACY"
+            if [ -z "$CLASPRC" ]; then
+              echo "::error::No clasp credentials. Set org variables GCP_WIF_PROVIDER + CLASPRC_SECRET (Secret Manager), or org secret CLASPRC_JSON (legacy)."
+              exit 1
+            fi
+          fi
+          if [ -z "$CLASP_JSON" ]; then
+            echo "::error::CLASP_JSON secret is not set for this environment."
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$CLASPRC" > ~/.clasprc.json
+          printf '%s' "$CLASP_JSON" > .clasp.json
+
+      - name: Push to Apps Script
+        run: pnpm exec clasp push -f
+
+      - name: Deploy new version
+        run: pnpm exec clasp deploy -i "${{ vars.DEPLOYMENT_ID }}" --description "CD deploy from ${{ github.event.workflow_run.head_branch }}@${{ github.event.workflow_run.head_sha }}"
+
+      - name: Set script properties
+        if: vars.GCP_PROJECT_NUMBER != '' && env.SCRIPT_PROPERTIES != ''
+        run: ./scripts/set-properties.sh --env SCRIPT_PROPERTIES
+
+      - name: Post-deploy hook
+        if: always() && hashFiles('.github/hooks/post-deploy.sh') != ''
+        run: bash .github/hooks/post-deploy.sh
+        env:
+          DEPLOY_ENV: ${{ github.event.workflow_run.head_branch == 'main' && 'production' || 'development' }}
+          DEPLOY_STATUS: ${{ job.status }}

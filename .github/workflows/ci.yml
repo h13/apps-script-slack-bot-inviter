@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check
+        run: pnpm run check
+
+      - name: Build
+        run: pnpm run build
+
+  templatesyncignore_check:
+    if: github.event.repository.is_template == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check .templatesyncignore completeness
+        run: |
+          set -f  # disable globbing to safely expand $WHITELIST
+
+          # Extract whitelisted files from .templatesyncignore
+          WHITELIST=$(grep -E '^\s*:!' .templatesyncignore | sed 's/^\s*:!//')
+
+          # Check that all whitelisted files are tracked in git
+          MISSING=""
+          for f in $WHITELIST; do
+            if ! git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+              MISSING="$MISSING $f"
+            fi
+          done
+
+          if [ -n "$MISSING" ]; then
+            echo "::error::The following files are in .templatesyncignore but not tracked in git:"
+            echo "$MISSING" | tr ' ' '\n' | grep -v '^$'
+            echo ""
+            echo "Either add them to the repo or remove from .templatesyncignore"
+            exit 1
+          fi
+
+          # Reverse check: find tracked files not in whitelist (informational)
+          git ls-files | sort > /tmp/tracked.txt
+          echo "$WHITELIST" | tr ' ' '\n' | grep -v '^$' | sort > /tmp/whitelist.txt
+          NOT_LISTED=$(comm -23 /tmp/tracked.txt /tmp/whitelist.txt)
+
+          if [ -n "$NOT_LISTED" ]; then
+            echo "::notice::Tracked files not in whitelist (user-owned, not synced):"
+            echo "$NOT_LISTED"
+          fi
+
+          echo "Whitelist check passed."

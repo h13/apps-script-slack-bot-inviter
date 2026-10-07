@@ -1,0 +1,24 @@
+{
+  "testEnvironment": "node",
+  "transform": {
+    "^.+\\.tsx?$": ["@swc/jest"]
+  },
+  "modulePathIgnorePatterns": ["<rootDir>/dist/", "<rootDir>/build/"],
+  "testPathIgnorePatterns": ["<rootDir>/dist/", "<rootDir>/build/"],
+  "moduleNameMapper": {
+    "(.+)\\.js": "$1"
+  },
+  "collectCoverageFrom": [
+    "src/**/*.ts",
+    "!src/index.ts",
+    "!src/setProperties.ts"
+  ],
+  "coverageThreshold": {
+    "global": {
+      "branches": 80,
+      "functions": 80,
+      "lines": 80,
+      "statements": 80
+    }
+  }
+}
