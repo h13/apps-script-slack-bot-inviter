@@ -1,5 +1,5 @@
 {
-  "name": "apps-script-fleet",
+  "name": "apps-script-slack-bot-inviter",
   "version": "0.0.0",
   "private": true,
   "type": "module",
