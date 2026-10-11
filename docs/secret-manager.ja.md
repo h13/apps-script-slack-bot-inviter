@@ -23,12 +23,12 @@ GCP ネイティブ認証への置き換えは不可能です。変わるのは�
 
 すべて中央集約されており、**リポ単位のセットアップ作業はゼロ**です:
 
-| リソース                                     | 個数             | スコープ                                                                                                |
-| -------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------- |
-| Secret `clasp-credentials`                   | 1                | 中央 GCP プロジェクト。CI は常に `latest` を読む                                                        |
-| WIF プール `apps-script-fleet`               | 1                | 配下にプロバイダ `github` + `gitlab`                                                                    |
-| IAM バインディング                           | org/group 単位   | `principalSet://…/attribute.repository_owner/<org>`(GitHub)/ `attribute.namespace_path/<group>`(GitLab) |
-| CI 変数 `GCP_WIF_PROVIDER`, `CLASPRC_SECRET` | org/group レベル | 全リポに自動継承                                                                                        |
+| リソース | 個数 | スコープ |
+| --- | --- | --- |
+| Secret `clasp-credentials` | 1 | 中央 GCP プロジェクト。CI は常に `latest` を読む |
+| WIF プール `apps-script-fleet` | 1 | 配下にプロバイダ `github` + `gitlab` |
+| IAM バインディング | org/group 単位 | `principalSet://…/attribute.repository_owner/<org>`(GitHub)/ `attribute.namespace_path/<group>`(GitLab) |
+| CI 変数 `GCP_WIF_PROVIDER`, `CLASPRC_SECRET` | org/group レベル | 全リポに自動継承 |
 
 **直接 WIF(サービスアカウント偽装なし)** を採用しています。Secret Manager は
 フェデレーテッドトークンを直接受け付けるため、プールの `principalSet://` に
@@ -196,10 +196,10 @@ Cloud Logging に記録されます — `attribute.repository`(GitHub)/
 
 ### 7. CI 変数の設定(org/group レベル、両プラットフォーム同名)
 
-| 変数               | 値                                                                                                                                          |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| 変数 | 値 |
+| --- | --- |
 | `GCP_WIF_PROVIDER` | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/apps-script-fleet/providers/github`(GitHub)/ `…/providers/gitlab`(GitLab) |
-| `CLASPRC_SECRET`   | `projects/<PROJECT_ID>/secrets/clasp-credentials`                                                                                           |
+| `CLASPRC_SECRET` | `projects/<PROJECT_ID>/secrets/clasp-credentials` |
 
 - **GitHub**: Organization → Settings → Actions → Variables(secret ではなく
   variable — 秘密情報ではないため)。CLI の場合は `admin:org` スコープが必要
@@ -217,7 +217,6 @@ Cloud Logging に記録されます — `attribute.repository`(GitHub)/
   前置してください。
 
   個人アカウント(org なし)の場合はリポジトリ変数として設定します。
-
 - **GitLab**: Group → Settings → CI/CD → Variables。**unprotected** で設定して
   ください: protected にすると `dev` パイプラインから見えず、dev デプロイが
   気づかないうちに legacy モードに落ちます。
@@ -293,17 +292,17 @@ org/group 一括の `principalSet` の代わりに、リポ単位で付与でき
 
 ## トラブルシューティング
 
-| 症状                                                                                                                 | 原因の見立て                                                                                                                                                                                                                                                                                                                                                                                                |
-| -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| STS 403 `unable to acquire impersonated credentials` / `The given credential is rejected by the attribute condition` | プロバイダの `--attribute-condition` 不一致(org/group 違い)、または JWT の `aud` が `--allowed-audiences` と不一致。JWT の `aud` = `$CI_SERVER_URL`(スキーム込み・末尾スラッシュ無し)。                                                                                                                                                                                                                     |
-| STS 400 `Invalid value for "audience"`                                                                               | STS リクエストの `audience` は `//iam.googleapis.com/projects/<NUM>/…/providers/<name>` — **`https:` プレフィックス無し**、プロジェクト**番号**を使う。                                                                                                                                                                                                                                                     |
-| STS 400 `mapped attribute google.subject exceeds the 127 bytes limit`                                                | JWT の `sub` が長すぎる(深くネストした GitLab group、長い GitHub repo/environment 名)。`google.subject` を短いクレームに再マップする(例: GitLab は `assertion.project_path`)— IAM は attribute にバインドしているため他は変更不要。                                                                                                                                                                         |
-| `secrets create` が `FAILED_PRECONDITION`(`constraints/gcp.resourceLocations`)                                       | 組織ポリシーが global レプリケーションを禁止。`--replication-policy=user-managed --locations=<許可リージョン>` で作成(許可リージョンは `gcloud org-policies describe gcp.resourceLocations --project=… --effective` で確認)。                                                                                                                                                                               |
-| CI の secret 取得時に `cloud Resource Manager API has not been used in project …`                                    | 中央プロジェクトで `cloudresourcemanager.googleapis.com` を有効化 — `get-secretmanager-secrets` がプロジェクト解決に使用。                                                                                                                                                                                                                                                                                  |
-| Secret Manager 403 `PERMISSION_DENIED`(CI)— セットアップ直後                                                         | `principalSet` の IAM バインディングは反映に数分かかる。2〜5分待ってリトライしてから疑うこと。                                                                                                                                                                                                                                                                                                              |
-| Secret Manager 403 `PERMISSION_DENIED`(CI)— 継続する場合                                                             | `principalSet` バインディングの欠落・誤り(attribute 名 `repository_owner` / `namespace_path` と値を確認)、**または secret 単体への付与になっている — プロジェクトレベルに移す**(実環境で検証済み、§4 参照)。                                                                                                                                                                                                |
-| `PERMISSION_DENIED`(開発者)                                                                                          | 開発者 Google グループに未所属、またはグループに `secretAccessor` が無い。                                                                                                                                                                                                                                                                                                                                  |
-| スクリプトの所有者が意図しないアカウントになっている                                                                 | マシンに残っていた古い `~/.clasprc.json` から secret を格納したのが原因。スクリプトの所有権はドメイン跨ぎで移管できず、clasp トークンではゴミ箱送りすらできない(`drive.file` スコープ + スクリプトは Apps Script API 経由作成のため「アプリのファイル」扱いにならない)。対処: 正しいアカウントで `clasp login` → secret をローテーション → 各リポで `init.sh` 再実行 → 孤児スクリプトは旧所有者が手動削除。 |
-| GitLab ジョブが script 前に `id_tokens` エラーで失敗                                                                 | GitLab < 16.1(`aud` の変数展開)または < 15.7(`id_tokens` 自体)。アップグレードするか、旧テンプレ + legacy モードを継続。                                                                                                                                                                                                                                                                                    |
-| GitLab で `main` は WIF が通るが `dev` で失敗                                                                        | `GCP_WIF_PROVIDER` / `CLASPRC_SECRET` が **protected** 変数になっている。unprotected に変更。                                                                                                                                                                                                                                                                                                               |
-| エアギャップ GitLab                                                                                                  | WIF は `sts.googleapis.com` + `secretmanager.googleapis.com` への egress が必要。legacy `CLASPRC_JSON` を継続使用。                                                                                                                                                                                                                                                                                         |
+| 症状 | 原因の見立て |
+| --- | --- |
+| STS 403 `unable to acquire impersonated credentials` / `The given credential is rejected by the attribute condition` | プロバイダの `--attribute-condition` 不一致(org/group 違い)、または JWT の `aud` が `--allowed-audiences` と不一致。JWT の `aud` = `$CI_SERVER_URL`(スキーム込み・末尾スラッシュ無し)。 |
+| STS 400 `Invalid value for "audience"` | STS リクエストの `audience` は `//iam.googleapis.com/projects/<NUM>/…/providers/<name>` — **`https:` プレフィックス無し**、プロジェクト**番号**を使う。 |
+| STS 400 `mapped attribute google.subject exceeds the 127 bytes limit` | JWT の `sub` が長すぎる(深くネストした GitLab group、長い GitHub repo/environment 名)。`google.subject` を短いクレームに再マップする(例: GitLab は `assertion.project_path`)— IAM は attribute にバインドしているため他は変更不要。 |
+| `secrets create` が `FAILED_PRECONDITION`(`constraints/gcp.resourceLocations`) | 組織ポリシーが global レプリケーションを禁止。`--replication-policy=user-managed --locations=<許可リージョン>` で作成(許可リージョンは `gcloud org-policies describe gcp.resourceLocations --project=… --effective` で確認)。 |
+| CI の secret 取得時に `cloud Resource Manager API has not been used in project …` | 中央プロジェクトで `cloudresourcemanager.googleapis.com` を有効化 — `get-secretmanager-secrets` がプロジェクト解決に使用。 |
+| Secret Manager 403 `PERMISSION_DENIED`(CI)— セットアップ直後 | `principalSet` の IAM バインディングは反映に数分かかる。2〜5分待ってリトライしてから疑うこと。 |
+| Secret Manager 403 `PERMISSION_DENIED`(CI)— 継続する場合 | `principalSet` バインディングの欠落・誤り(attribute 名 `repository_owner` / `namespace_path` と値を確認)、**または secret 単体への付与になっている — プロジェクトレベルに移す**(実環境で検証済み、§4 参照)。 |
+| `PERMISSION_DENIED`(開発者) | 開発者 Google グループに未所属、またはグループに `secretAccessor` が無い。 |
+| スクリプトの所有者が意図しないアカウントになっている | マシンに残っていた古い `~/.clasprc.json` から secret を格納したのが原因。スクリプトの所有権はドメイン跨ぎで移管できず、clasp トークンではゴミ箱送りすらできない(`drive.file` スコープ + スクリプトは Apps Script API 経由作成のため「アプリのファイル」扱いにならない)。対処: 正しいアカウントで `clasp login` → secret をローテーション → 各リポで `init.sh` 再実行 → 孤児スクリプトは旧所有者が手動削除。 |
+| GitLab ジョブが script 前に `id_tokens` エラーで失敗 | GitLab < 16.1(`aud` の変数展開)または < 15.7(`id_tokens` 自体)。アップグレードするか、旧テンプレ + legacy モードを継続。 |
+| GitLab で `main` は WIF が通るが `dev` で失敗 | `GCP_WIF_PROVIDER` / `CLASPRC_SECRET` が **protected** 変数になっている。unprotected に変更。 |
+| エアギャップ GitLab | WIF は `sts.googleapis.com` + `secretmanager.googleapis.com` への egress が必要。legacy `CLASPRC_JSON` を継続使用。 |

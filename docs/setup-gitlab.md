@@ -53,7 +53,7 @@ git push -u origin main
 Then register it as a **[Group project template](https://docs.gitlab.com/user/group/custom_project_templates/)** (Settings → General → Custom project templates). This enables "Create from template" for all group members.
 
 > Instance-level templates require admin privileges and are not available on GitLab.com. Group templates are recommended for all environments.
->
+
 > **Free tier**: Group project templates require Premium or higher. If you are on the Free tier, skip this step and use `scripts/create-gitlab-project.sh` instead — see [Per Project (Free Tier)](#per-project-free-tier) below.
 
 ### 3. Configure Template Sync on the Template Project
@@ -144,11 +144,11 @@ Push to `dev` triggers dev deployment, push to `main` triggers production deploy
 
 **User Projects:**
 
-| Job             | Outbound network access required                                                         |
-| --------------- | ---------------------------------------------------------------------------------------- |
-| `check`         | npm registry only (for `pnpm install`)                                                   |
+| Job             | Outbound network access required                       |
+| --------------- | ------------------------------------------------------ |
+| `check`         | npm registry only (for `pnpm install`)                 |
 | `deploy_*`      | `script.google.com`; WIF mode adds `sts.googleapis.com` + `secretmanager.googleapis.com` |
-| `template_sync` | Template Project (internal GitLab, via Group Variable)                                   |
+| `template_sync` | Template Project (internal GitLab, via Group Variable) |
 
 **Template Project:**
 
