@@ -60,8 +60,7 @@ access_token=$(printf '%s' "$sts_response" | node -e '
 
 # 2. Access the secret payload. The Authorization header is passed via a curl
 #    config on stdin so the token never appears in argv.
-if ! secret_response=$(
-  curl -sS --fail-with-body --config - <<CURLCFG
+if ! secret_response=$(curl -sS --fail-with-body --config - <<CURLCFG
 url = "https://secretmanager.googleapis.com/v1/${SECRET_RESOURCE}/versions/latest:access"
 header = "Authorization: Bearer ${access_token}"
 CURLCFG

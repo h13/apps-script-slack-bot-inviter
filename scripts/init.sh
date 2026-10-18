@@ -194,8 +194,8 @@ gl_set_variable() {
         --method PUT \
         --raw-field "value=${value}" \
         --raw-field "environment_scope=${env_scope}" \
-        --raw-field "protected=${protected}" >/dev/null 2>&1 ||
-        die "Failed to update ${key} (${env_scope})"
+        --raw-field "protected=${protected}" >/dev/null 2>&1 \
+        || die "Failed to update ${key} (${env_scope})"
     else
       die "Failed to create ${key} (${env_scope}): ${result}"
     fi
