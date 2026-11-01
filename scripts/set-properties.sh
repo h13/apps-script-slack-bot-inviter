@@ -24,19 +24,13 @@ PROPS_JSON=""
 while [[ $# -gt 0 ]]; do
   case $1 in
     --file)
-      [[ -f "$2" ]] || {
-        echo "Error: File not found: $2" >&2
-        exit 1
-      }
+      [[ -f "$2" ]] || { echo "Error: File not found: $2" >&2; exit 1; }
       PROPS_JSON=$(cat "$2")
       shift 2
       ;;
     --env)
       PROPS_JSON="${!2:-}"
-      [[ -n "$PROPS_JSON" ]] || {
-        echo "Error: Environment variable $2 is empty or not set." >&2
-        exit 1
-      }
+      [[ -n "$PROPS_JSON" ]] || { echo "Error: Environment variable $2 is empty or not set." >&2; exit 1; }
       shift 2
       ;;
     --json)
@@ -57,11 +51,8 @@ if [[ -z "$PROPS_JSON" ]]; then
 fi
 
 # Validate JSON
-node -e "JSON.parse(process.argv[1])" "$PROPS_JSON" 2>/dev/null ||
-  {
-    echo "Error: Invalid JSON provided." >&2
-    exit 1
-  }
+node -e "JSON.parse(process.argv[1])" "$PROPS_JSON" 2>/dev/null \
+  || { echo "Error: Invalid JSON provided." >&2; exit 1; }
 
 echo "Setting script properties via clasp run..."
 pnpm exec clasp run setScriptProperties --params "[${PROPS_JSON}]"
