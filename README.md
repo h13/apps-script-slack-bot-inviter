@@ -1,355 +1,132 @@
-# Apps Script Fleet
+# Slack Bot Inviter
 
-[![CI](https://github.com/h13/apps-script-fleet/actions/workflows/ci.yml/badge.svg)](https://github.com/h13/apps-script-fleet/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/h13/apps-script-fleet/blob/main/LICENSE)
+[![CI](https://github.com/h13/apps-script-slack-bot-inviter/actions/workflows/ci.yml/badge.svg)](https://github.com/h13/apps-script-slack-bot-inviter/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/h13/apps-script-slack-bot-inviter/blob/main/LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D24-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](https://www.typescriptlang.org/)
-[![Google Apps Script](https://img.shields.io/badge/Google%20Apps%20Script-Template-4285F4.svg)](https://developers.google.com/apps-script)
+[![Google Apps Script](https://img.shields.io/badge/Google%20Apps%20Script-4285F4.svg)](https://developers.google.com/apps-script)
 
 [日本語](README.ja.md)
 
-**Infrastructure for scaling Google Apps Script across your organization.**
+**Bulk-invite a bot to every Slack channel you belong to — with one slash command.** Anyone in the workspace can use it; each person authorizes once and the app acts with *their* membership, so private channels work without anyone handling tokens by hand.
 
-Most Apps Script templates help you set up _one_ project with modern tooling. This one is designed so you never have to set up tooling again — create a repo from this template, set a script ID, and your CI/CD pipeline is already running. Works with GitHub and GitLab — cloud and self-managed.
+Built from the [apps-script-fleet](https://github.com/h13/apps-script-fleet) template. Companion to [apps-script-slack-channel-archiver](https://github.com/h13/apps-script-slack-channel-archiver): an archiver bot can self-join public channels but must be *invited* to private ones — this app automates those invites.
 
-**[→ Quick Start](#quick-start)** · [What's Included](#whats-included) · [How This Differs](#how-this-differs) · [FAQ](#faq)
+## How It Works
 
-## The Problem
+```
+/bot-inviter archiver
+  → doPost (GAS web app)
+      → first time: ephemeral "Authorize" link (Slack OAuth v2, user scopes)
+          → doGet exchanges the code, stores the user token (Script Properties)
+      → afterwards: enqueue job + one-off trigger, reply "working on it"
+  → processInviteJobs (trigger)
+      → users.conversations: channels YOU belong to (private by default)
+      → conversations.invite: add the bot to each channel
+      → summary posted back via response_url (ephemeral)
+```
 
-Apps Script projects start small, but they multiply. Slack notifications, report generation, form processing, Drive automation — before long, your organization has a dozen scripts. Each one needs:
+Design principle: **inviting is a user action, archiving is an app action.** This app uses per-user tokens (`xoxp`, acquired via OAuth — never typed or pasted); bots like the archiver keep their user-independent `xoxb` token. One token model per responsibility.
 
-- TypeScript configuration
-- A bundler (Rollup, Webpack, Vite)
-- Linting and formatting
-- Test setup with coverage
-- CI/CD workflows for dev and production
-- clasp authentication management
-- Ongoing dependency updates
+## Quick Start (Deployer)
 
-Setting this up takes 2–4 hours per project. At 10 projects, that's a week of pure boilerplate — plus 10 different configurations to maintain going forward.
+### 1. Deploy the Apps Script Web App
 
-## The Solution: 1 Repo = 1 Function
-
-![Architecture — 1 repo per function with shared org infrastructure](docs/architecture.png)
-
-Apps Script Fleet treats each function as an independent repository, backed by shared organizational infrastructure:
-
-- **One-time setup**: Add `CLASPRC_JSON` to your org/group-level secrets ([GitHub](https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions#creating-secrets-for-an-organization) or [GitLab](https://docs.gitlab.com/ci/variables/#for-a-group)). Every repo created from this template uses it automatically.
-- **Per-project setup (~5 min)**: Create a repo from this template → set your script ID → done. CI runs on PRs/MRs, CD deploys on merge.
-- **Fleet maintenance**: [Renovate](https://docs.renovatebot.com/) auto-updates dependencies across all repos. [Template sync](.github/workflows/sync-template.yml) propagates tooling improvements from the upstream template.
-
-The difference at a glance:
-
-![Before and after comparison](docs/before-after.png)
-
-## What's Included
-
-| Category     | Tools                                                              |
-| ------------ | ------------------------------------------------------------------ |
-| Language     | TypeScript 7 (strict mode)                                         |
-| Bundler      | Rollup (Apps Script–compatible output)                             |
-| Deployment   | clasp (dev / prod environments)                                    |
-| Testing      | Jest (80% coverage threshold)                                      |
-| Linting      | Oxlint, Oxfmt, Stylelint, HTMLHint                                 |
-| Git hooks    | husky + lint-staged                                                |
-| CI/CD        | GitHub Actions + GitLab CI (CI on PR, CD on merge to `dev`/`main`) |
-| Dependencies | Renovate (auto-update with automerge)                              |
-| Sync         | Template sync workflow (upstream config updates)                   |
-
-The result — your day looks like this:
-
-![A developer's day: without vs with Apps Script Fleet](docs/before-after-human.png)
-
-## How This Differs
-
-|                | [Apps Script Engine](https://github.com/WildH0g/apps-script-engine-template) | Apps Script Fleet                                  |
-| -------------- | ---------------------------------------------------------------------------- | -------------------------------------------------- |
-| Philosophy     | Feature-rich DX                                                              | Minimal constraints                                |
-| Best for       | Single complex project                                                       | Many small automations                             |
-| Frontend dev   | Vite + Alpine.js + Tailwind                                                  | Basic HTML (Apps Script built-in)                  |
-| Testing        | Vitest (optional)                                                            | Jest (80% coverage enforced)                       |
-| Template sync  | —                                                                            | Weekly (auto-PR)                                   |
-| Org-level auth | —                                                                            | Secret Manager + WIF, keyless CI (GitHub + GitLab) |
-
-> Building a rich UI with client-side frameworks? [Apps Script Engine](https://github.com/WildH0g/apps-script-engine-template) is the better fit.
-> Managing 5+ small Apps Script automations across your org? That's what Apps Script Fleet is for.
-
-## Organization Setup (One-Time)
-
-Before your team can use Apps Script Fleet, an org admin stores the shared clasp credentials in **Google Cloud Secret Manager**. CI fetches them keylessly via **Workload Identity Federation (OIDC)**; developers fetch them with their personal `gcloud` login. One secret + one WIF pool + org/group-wide IAM = **zero per-repo auth setup**, with rotation, revocation, and audit logs the legacy model never had.
-
-Full step-by-step guide: **[docs/secret-manager.md](docs/secret-manager.md)**. In outline:
-
-1. **Store credentials**: enable the [Apps Script API](https://script.google.com/home/usersettings) for the deploy account, `clasp login` with it → `gcloud secrets versions add clasp-credentials --data-file="$HOME/.clasprc.json"`
-2. **Create WIF pool `apps-script-fleet`** with `github` / `gitlab` providers, attribute-restricted to your org/group
-3. **Grant `roles/secretmanager.secretAccessor`** to the CI `principalSet://` and to the developer Google group
-4. **Set org/group CI variables** `GCP_WIF_PROVIDER` + `CLASPRC_SECRET` (same names on both platforms)
-5. **Each developer** runs `./scripts/fetch-clasp-credentials.sh` once per machine — `~/.clasprc.json` is shared by every repo
-
-> **clasp auth itself is unchanged.** clasp still uses the `~/.clasprc.json` OAuth token (the Apps Script API does not support service accounts for push/deploy). Only the storage and delivery of that token change.
-
-<details>
-<summary><strong>Legacy / air-gapped fallback: <code>CLASPRC_JSON</code> shared secret</strong></summary>
-
-For air-gapped GitLab instances (no egress to `sts.googleapis.com` / `secretmanager.googleapis.com`). CI uses this automatically when `GCP_WIF_PROVIDER` is not set:
-
-1. **Login to clasp** with the CI/CD Google account: `npx @google/clasp login` → generates `~/.clasprc.json`
-2. **Save to your org's password manager** — share the contents as a shared credential entry (e.g., "clasp CI/CD — Apps Script Fleet")
-3. **Set `CLASPRC_JSON` as an org-level CI/CD secret**:
-   - **GitHub**: [Organization secrets](https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions#creating-secrets-for-an-organization) → add `CLASPRC_JSON` with the full JSON content
-   - **GitLab**: Group → Settings → CI/CD → Variables → add `CLASPRC_JSON` (protected, masked)
-4. **Each developer** copies `~/.clasprc.json` from the password manager to their local machine
-
-</details>
-
-### GCP Project Setup (Optional, Recommended)
-
-Binding all Apps Script projects to a single standard GCP project enables centralized Cloud Logging, Error Reporting, API usage monitoring, and `clasp run` for CI/CD property injection.
-
-**Prerequisites:**
-
-1. **Create a standard GCP project** (or use an existing one) in [Google Cloud Console](https://console.cloud.google.com/)
-2. **Enable the Apps Script API** on the project: [APIs & Services → Enable APIs](https://console.cloud.google.com/apis/library/script.googleapis.com)
-3. **Configure the OAuth consent screen**: [APIs & Services → OAuth consent screen](https://console.cloud.google.com/apis/credentials/consent) — set to "Internal" for Workspace organizations
-4. **Note the project number** (not the project ID): [Project Settings](https://console.cloud.google.com/iam-admin/settings) → Project number
-5. **Set `GCP_PROJECT_NUMBER` as an org-level CI/CD variable**:
-   - **GitHub**: Organization variable → `GCP_PROJECT_NUMBER`
-   - **GitLab**: Group → Settings → CI/CD → Variables → `GCP_PROJECT_NUMBER`
-
-### Per-Project Init
-
-Once `~/.clasprc.json` is on your machine, run the init script to create Apps Script projects and configure CI/CD variables automatically:
+Set up dev/prod script projects with [apps-script-fleet](https://github.com/h13/apps-script-fleet) (`./scripts/init.sh`) or `clasp create`, then:
 
 ```bash
-./scripts/init.sh \
-  --title "My Script" \
-  --gcp-project 123456789
+pnpm install
+pnpm run deploy        # dev
+pnpm run deploy:prod   # prod
 ```
 
-The platform (GitHub or GitLab) is detected automatically from the authenticated CLI (`gh` or `glab`) for your git remote host.
+In the Apps Script editor: **Deploy → New deployment → Web app**, with:
 
-Options:
+- **Execute as**: Me
+- **Who has access**: Anyone
 
-- `--title "Name"` — Apps Script project title (default: directory name)
-- `--type standalone|sheets|docs|slides|forms` — Apps Script project type (default: `standalone`)
-- `--gcp-project <NUMBER>` — GCP project number to bind (enables Cloud Logging + `clasp run`)
+Copy the Web app URL (`https://script.google.com/macros/s/…/exec`). Manage later code updates from **Deploy → Manage deployments** against the *same* deployment, so the URL stays stable.
 
-The script creates dev/prod Apps Script projects, deploys initial versions, and sets `CLASP_JSON` + `DEPLOYMENT_ID` on your CI/CD platform. When `--gcp-project` is specified, the projects are bound to the GCP project and `GCP_PROJECT_NUMBER` is set as a CI/CD variable.
+### 2. Create the Slack App
 
-### Script Properties via CI/CD
+Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From an app manifest** → paste [`slack-app-manifest.yml`](slack-app-manifest.yml) with both `REPLACE_WITH_DEPLOYMENT_ID` URLs replaced by your Web app URL → **Install to Workspace**.
 
-When GCP project integration is configured, you can automatically inject Script Properties during deployment:
+### 3. Set Script Properties
 
-1. **Set `SCRIPT_PROPERTIES`** as a CI/CD secret (JSON string per environment):
+In the Apps Script editor: Project Settings (gear icon) → Script Properties:
 
-   ```json
-   { "API_KEY": "xxx", "SLACK_WEBHOOK": "https://hooks.slack.com/..." }
-   ```
+| key                        | value                                                                 | required |
+| -------------------------- | --------------------------------------------------------------------- | -------- |
+| `SLACK_CLIENT_ID`          | App credentials → Client ID                                           | yes      |
+| `SLACK_CLIENT_SECRET`      | App credentials → Client Secret                                       | yes      |
+| `SLACK_VERIFICATION_TOKEN` | App credentials → Verification Token                                  | yes      |
+| `TARGET_BOTS`              | `alias=BOT_USER_ID[,alias=BOT_USER_ID…]`, e.g. `archiver=U0123ABCD`   | yes      |
+| `INCLUDE_PUBLIC_CHANNELS`  | `true` to also invite into public channels (default: private only)    | no       |
 
-2. Properties are injected automatically after `clasp deploy` when both `GCP_PROJECT_NUMBER` and `SCRIPT_PROPERTIES` are set
-3. See `.github/hooks/post-deploy.sh.example` or `.gitlab/post-deploy.yml.example` for hook-based alternatives
+To find a bot's user ID: open the bot's profile in Slack → three-dot menu → **Copy member ID** (`U…`/`W…`).
 
-## Quick Start
+### 4. Use It
 
-- **GitHub / GitHub Enterprise Server**: [docs/setup-github.md](docs/setup-github.md)
-- **GitLab.com / GitLab Self-Managed**: [docs/setup-gitlab.md](docs/setup-gitlab.md)
-
-## CI/CD Pipeline
-
-Both GitHub Actions and GitLab CI configurations are included. The same pipeline runs on whichever platform you push to — no additional setup needed beyond CI/CD variables.
-
-### GitHub Actions
+Anyone in the workspace:
 
 ```
-Push / PR  →  CI (ci.yml)  →  CD (cd.yml)
-               ├── Lint          └── Build
-               ├── Typecheck         └── clasp push
-               ├── Test                  └── clasp deploy
-               └── Build
+/bot-inviter            # when exactly one bot is configured
+/bot-inviter archiver   # pick a configured bot by alias
 ```
 
-| Trigger        | Pipeline       | Behavior                           |
-| -------------- | -------------- | ---------------------------------- |
-| PR to `main`   | CI only        | lint → typecheck → test → build    |
-| Push to `dev`  | CI → CD (dev)  | cancel-in-progress                 |
-| Push to `main` | CI → CD (prod) | queued (sequential, never skipped) |
+The first run returns an **Authorize** link (one time, per person). After authorizing, run the command again — a summary arrives within a minute: invited / already in / failed, per channel.
 
-### GitLab CI
+## Security Model
 
-`.gitlab-ci.yml` includes split configs from `.gitlab/` (ci.yml, cd.yml, sync-template.yml). See [docs/setup-gitlab.md](docs/setup-gitlab.md) for variable configuration and Self-Managed runner requirements.
+- **Per-user OAuth tokens** (`xoxp`) are acquired through Slack's OAuth v2 flow and stored in Script Properties (`USER_TOKEN_<user ID>`). Nobody types or sees a token; each token can act only on channels its owner belongs to, and dies with that user's account — the correct scope for an invite.
+- **Script Properties are readable by editors of the Apps Script project.** Keep the project's editor list down to admins. Users can revoke their grant anytime from Slack → **Settings & administration → Manage apps → Bot Inviter**; revoked tokens are detected and deleted on next use.
+- **CSRF**: the OAuth `state` is a single-use nonce (10-minute TTL) bound to the Slack user who ran the command, and the authorizing user must match it.
+- **SSRF**: `response_url` is only ever posted to when it is under `https://hooks.slack.com/`.
+- **Request verification**: GAS web apps do not expose HTTP headers, so Slack's signing-secret scheme (`X-Slack-Signature`) cannot be verified on this runtime. The app verifies the legacy verification token instead — weaker: treat the verification token as a secret. If it leaks, a forger can trigger invites of the *configured* bots on behalf of already-authorized users and receive the resulting summary (channel names included) at a response_url of their choosing — rotate the token from the app settings if you suspect exposure.
 
-| Job             | Stage  | Trigger           |
-| --------------- | ------ | ----------------- |
-| `check`         | check  | push / MR         |
-| `deploy_dev`    | deploy | push to `dev`     |
-| `deploy_prod`   | deploy | push to `main`    |
-| `template_sync` | sync   | schedule / manual |
+## Limits
 
-### Pre/Post-Deploy Hooks
-
-Customize the deploy pipeline without modifying template-managed files:
-
-- **GitHub Actions**: create `.github/hooks/pre-deploy.sh` or `.github/hooks/post-deploy.sh`
-- **GitLab CI**: create `.gitlab/pre-deploy.yml` or `.gitlab/post-deploy.yml`
-
-These files are not synced from the template.
+- Script Properties hold at most ~500 keys — roughly 490 authorized users per deployment.
+- A run stops after 5 minutes (the GAS limit is 6) and says it was truncated; run the command again to continue.
+- `conversations.invite` is rate-limited by Slack (Tier 3); very large memberships may take a couple of runs.
 
 ## Project Structure
 
 ```
-your-project/
-├── src/
-│   ├── index.ts           # Apps Script entry points (doGet, etc.)
-│   ├── greeting.ts        # Business logic (example)
-│   └── app.html           # Web UI (example)
-├── test/
-│   └── greeting.test.ts
-├── .github/workflows/
-│   ├── ci.yml             # CI: lint → typecheck → test → build
-│   ├── cd.yml             # CD: deploy on CI success
-│   └── sync-template.yml  # Sync from upstream template
-├── .gitlab-ci.yml         # GitLab CI/CD root (includes .gitlab/*.yml)
-├── .gitlab/
-│   ├── ci.yml             # CI: lint → typecheck → test → build
-│   ├── cd.yml             # CD: clasp push + deploy
-│   └── sync-template.yml  # Template sync (scheduled)
-├── rollup.config.mjs
-├── tsconfig.json
-├── jest.config.json
-├── .oxlintrc.json
-├── .oxfmtrc.json
-├── renovate.json          # Auto-update config
-└── .templatesyncignore    # Your code won't be overwritten
+src/
+├── index.ts          # GAS entry points (doPost, doGet, processInviteJobs)
+├── config.ts         # Types, Script Property keys, scopes, limits
+├── target-bots.ts    # TARGET_BOTS parsing + alias resolution (pure)
+├── oauth-url.ts      # OAuth v2 authorize URL builder (pure)
+├── messages.ts       # Slack message builders (pure)
+├── store.ts          # Script Properties / cache / trigger wrappers
+├── slack-client.ts   # Slack Web API wrapper (stateless)
+└── setProperties.ts  # clasp run helper for CI/CD property injection
+test/
+├── target-bots.test.ts
+├── oauth-url.test.ts
+└── messages.test.ts
 ```
 
-## Development Workflow
+## Development
 
-### Daily
+| Command                | Description                             |
+| ---------------------- | --------------------------------------- |
+| `pnpm run check`       | lint + typecheck + test (all checks)    |
+| `pnpm run build`       | Bundle TypeScript and output to `dist/` |
+| `pnpm run test`        | Jest with coverage                      |
+| `pnpm run deploy`      | check → build → deploy to dev           |
+| `pnpm run deploy:prod` | check → build → deploy to production    |
 
-```
-# Edit src/ → check → deploy to dev → verify
-pnpm run check
-pnpm run deploy
-```
+## CI/CD
 
-### PR Flow
+CI runs on every push and PR. CD deploys on merge to `dev` or `main` — configured via GitHub Actions secrets/variables per environment. See the [apps-script-fleet docs](https://github.com/h13/apps-script-fleet#cicd-pipeline).
 
-1. Create a feature branch
-2. Commit — husky auto-runs lint-staged
-3. Push and create PR — CI runs automatically
-4. Merge to `main` — CD deploys to production
+## Notes
 
-### Available Commands
-
-| Command                    | Description                                    |
-| -------------------------- | ---------------------------------------------- |
-| `pnpm run check`           | lint + lint:css + lint:html + typecheck + test |
-| `pnpm run build`           | Bundle TypeScript + copy assets to `dist/`     |
-| `pnpm run deploy`          | check → build → deploy to dev                  |
-| `pnpm run deploy:prod`     | check → build → deploy to production           |
-| `pnpm run test -- --watch` | Jest in watch mode                             |
-
-## Keeping Repos in Sync
-
-### Template Sync
-
-- **GitHub**: The `sync-template.yml` workflow checks for upstream template updates weekly. When updates are found, a PR with the `template-sync` label is created.
-- **GitLab**: Create a Template Project in your Group, then use "Create from template" for each Apps Script project. User Projects sync from the Template Project via `TEMPLATE_REPO_URL` (Group Variable). See [docs/setup-gitlab.md](docs/setup-gitlab.md) for details.
-
-`.templatesyncignore` uses a whitelist format — only files with `:!` prefix are synced. Your project-specific files (`src/`, `test/`, `README.md`, etc.) are automatically excluded.
-
-### Renovate
-
-Configured via [`h13/renovate-config:node`](https://github.com/h13/renovate-config):
-
-- Minor/patch: automerged
-- Major: PR for manual review (labeled `breaking`)
-- DevDependencies: grouped and automerged
-- 7-day stability buffer before updating
-- Runs weekly on Sunday after 9pm
-
-## Customization
-
-### Adding OAuth Scopes
-
-By default, `appsscript.json` does not include an `oauthScopes` field. This lets Apps Script automatically infer the minimal scopes needed at runtime, which avoids OAuth consent screen blocks on personal Google accounts (consumer accounts are subject to Google's [OAuth app verification requirements](https://support.google.com/cloud/answer/9110914), and explicit scopes can trigger an "unverified app" warning).
-
-If your project requires specific scopes (e.g., for `UrlFetchApp`, Spreadsheets, or Drive), add the `oauthScopes` field to `appsscript.json`:
-
-```json
-{
-  "oauthScopes": [
-    "https://www.googleapis.com/auth/script.external_request",
-    "https://www.googleapis.com/auth/spreadsheets"
-  ]
-}
-```
-
-> **Note**: Once you declare `oauthScopes`, Apps Script stops inferring scopes automatically. You must list every scope your project needs.
-
-### Adding Source Files
-
-1. Create a module in `src/` (e.g., `src/utils.ts`)
-2. Import it in `src/index.ts` — Rollup bundles everything
-3. Add tests in `test/`
-
-> Apps Script only sees functions defined at the top level of `src/index.ts`.
-
-### Adjusting Coverage Threshold
-
-Edit `coverageThreshold` in `jest.config.json`. Default is 80% for all metrics. For small projects (5–10 functions), consider raising it to 100%.
-
-### Web App Configuration
-
-If your project uses `doGet` or `doPost` as a Web App, add the `webapp` section to `appsscript.json`:
-
-```json
-{
-  "webapp": {
-    "access": "ANYONE",
-    "executeAs": "USER_ACCESSING"
-  }
-}
-```
-
-| Property    | Options                                          |
-| ----------- | ------------------------------------------------ |
-| `access`    | `MYSELF`, `DOMAIN`, `ANYONE`, `ANYONE_ANONYMOUS` |
-| `executeAs` | `USER_ACCESSING`, `USER_DEPLOYING`               |
-
-See the [official documentation](https://developers.google.com/apps-script/manifest/web-app) for details.
-
-## Testing
-
-Tests live in `test/` and run with Jest. `src/index.ts` is excluded from coverage (Apps Script globals like `HtmlService` can't run in Node.js).
-
-```
-pnpm run test              # Run with coverage
-pnpm run test -- --watch   # Watch mode
-```
-
-## Example Projects
-
-Real projects built with Apps Script Fleet:
-
-| Project                                                                             | Pattern             | Description                                               |
-| ----------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------------- |
-| [custom-functions](https://github.com/h13/apps-script-custom-functions)             | Custom functions    | Google Sheets data validation (email, phone, postal code) |
-| [form-mailer](https://github.com/h13/apps-script-form-mailer)                       | Web App             | Contact form with Gmail notification                      |
-| [slack-channel-archiver](https://github.com/h13/apps-script-slack-channel-archiver) | Time-driven trigger | Auto-archive inactive Slack channels (public + private)   |
-| [slack-notifier](https://github.com/h13/apps-script-slack-notifier)                 | Time-driven trigger | Spreadsheet new rows to Slack via Bot Token               |
-
-Each repo demonstrates the "1 repo = 1 function" pattern with full CI/CD, testing, and deployment.
-
-## FAQ
-
-### Why 1 repo per function instead of a monorepo?
-
-Apps Script projects are typically small, self-contained automations. A monorepo adds complexity (workspace tooling, selective deploys) that doesn't pay off at this scale. Separate repos give you independent CI/CD, clear ownership, and simpler mental models — while template sync and Renovate handle the maintenance overhead.
-
-### Why 80% test coverage by default?
-
-For small, focused Apps Script functions, high coverage is achievable and catches subtle bugs before they hit production. 80% provides a meaningful quality gate without being a barrier to adoption. For projects with a tiny scope (5–10 functions), consider raising it to 100% in `jest.config.json`.
+- Functions in `src/index.ts` must not have the `export` keyword — the GAS runtime does not support ES module syntax
+- `src/index.ts`, `src/slack-client.ts`, `src/store.ts`, `src/setProperties.ts` are excluded from test coverage (GAS globals cannot run in Node.js)
+- Coverage threshold: 80% for all metrics (configurable in `jest.config.json`)
 
 ## License
 
