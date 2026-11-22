@@ -83,7 +83,7 @@ umask 077
 tmp=$(mktemp "${CLASPRC}.XXXXXX")
 trap 'rm -f "$tmp"' EXIT
 
-if ! gcloud secrets versions access latest --secret="$SECRET_NAME" --project="$PROJECT" >"$tmp"; then
+if ! gcloud secrets versions access latest --secret="$SECRET_NAME" --project="$PROJECT" > "$tmp"; then
   die "Failed to access the secret. If you see PERMISSION_DENIED, ask an admin to add you to the developer group that has roles/secretmanager.secretAccessor on '${SECRET_NAME}'."
 fi
 

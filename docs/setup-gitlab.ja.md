@@ -53,7 +53,7 @@ git push -u origin main
 次に **[Group project template](https://docs.gitlab.com/user/group/custom_project_templates/)**（Settings → General → Custom project templates）として登録します。これにより Group メンバー全員が「Create from template」で利用できるようになります。
 
 > Instance レベルのテンプレートには管理者権限が必要で、GitLab.com では利用できません。すべての環境で Group テンプレートを推奨します。
->
+
 > **Free tier**: Group project templates は Premium 以上のプランが必要です。Free tier の場合はこの手順をスキップし、代わりに `scripts/create-gitlab-project.sh` を使用してください — 下記の[プロジェクトごと（Free Tier）](#プロジェクトごとfree-tier)を参照。
 
 ### 3. Template Project に Template Sync を設定
@@ -144,11 +144,11 @@ pnpm run check    # lint + 型チェック + テスト
 
 **User Projects:**
 
-| ジョブ          | 必要な外部通信先                                                                                 |
-| --------------- | ------------------------------------------------------------------------------------------------ |
-| `check`         | npm レジストリのみ（`pnpm install` 用）                                                          |
+| ジョブ          | 必要な外部通信先                                     |
+| --------------- | ---------------------------------------------------- |
+| `check`         | npm レジストリのみ（`pnpm install` 用）              |
 | `deploy_*`      | `script.google.com`。WIF モードでは `sts.googleapis.com` + `secretmanager.googleapis.com` も必要 |
-| `template_sync` | Template Project（社内 GitLab、Group Variable 経由）                                             |
+| `template_sync` | Template Project（社内 GitLab、Group Variable 経由） |
 
 **Template Project:**
 

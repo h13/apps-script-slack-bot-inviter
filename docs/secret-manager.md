@@ -24,12 +24,12 @@ Authentication is two-tier:
 
 Everything is centralized — **zero per-repo setup**:
 
-| Resource                                          | Count           | Scope                                                                                                      |
-| ------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------- |
-| Secret `clasp-credentials`                        | 1               | Central GCP project; CI always reads `latest`                                                              |
-| WIF pool `apps-script-fleet`                      | 1               | Providers `github` + `gitlab` under it                                                                     |
-| IAM binding                                       | org/group-wide  | `principalSet://…/attribute.repository_owner/<org>` (GitHub) / `attribute.namespace_path/<group>` (GitLab) |
-| CI variables `GCP_WIF_PROVIDER`, `CLASPRC_SECRET` | org/group-level | Inherited by every repo                                                                                    |
+| Resource | Count | Scope |
+| --- | --- | --- |
+| Secret `clasp-credentials` | 1 | Central GCP project; CI always reads `latest` |
+| WIF pool `apps-script-fleet` | 1 | Providers `github` + `gitlab` under it |
+| IAM binding | org/group-wide | `principalSet://…/attribute.repository_owner/<org>` (GitHub) / `attribute.namespace_path/<group>` (GitLab) |
+| CI variables `GCP_WIF_PROVIDER`, `CLASPRC_SECRET` | org/group-level | Inherited by every repo |
 
 Direct WIF is used — **no service-account impersonation**. Secret Manager
 accepts federated tokens directly, so the pool's `principalSet://` gets
@@ -195,10 +195,10 @@ org-wide grant.
 
 ### 7. Set CI variables (org/group-level, same names on both platforms)
 
-| Variable           | Value                                                                                                                                          |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Variable | Value |
+| --- | --- |
 | `GCP_WIF_PROVIDER` | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/apps-script-fleet/providers/github` (GitHub) / `…/providers/gitlab` (GitLab) |
-| `CLASPRC_SECRET`   | `projects/<PROJECT_ID>/secrets/clasp-credentials`                                                                                              |
+| `CLASPRC_SECRET` | `projects/<PROJECT_ID>/secrets/clasp-credentials` |
 
 - **GitHub**: Organization → Settings → Actions → Variables (not secrets —
   these values are not sensitive), or via CLI — note the `admin:org` scope
@@ -216,7 +216,6 @@ org-wide grant.
   the commands with `env -u GH_TOKEN` in that case.
 
   On a personal account (no org), set them as repository variables instead.
-
 - **GitLab**: Group → Settings → CI/CD → Variables. Set them **unprotected**:
   protected variables are invisible on `dev` pipelines, which would silently
   drop dev deploys into legacy mode.
@@ -245,7 +244,7 @@ Impossible under the legacy model; now routine:
    `gcloud secrets versions add clasp-credentials --data-file="$HOME/.clasprc.json"`.
    CI reads `latest`, so this takes effect immediately — zero repo-side work.
    Run the account-verification one-liner from §1 first — the same rotation
-   flow is also how you _replace_ the deploy account, and storing the wrong
+   flow is also how you *replace* the deploy account, and storing the wrong
    machine-local `~/.clasprc.json` silently changes the fleet's identity.
 2. Verify with any repo's dev deploy.
 3. `gcloud secrets versions disable <old>` → after a grace period
@@ -291,17 +290,17 @@ which the Apps Script API makes unavoidable.
 
 ## Troubleshooting
 
-| Symptom                                                                                                              | Likely cause                                                                                                                                                                                                                                                                                                                                                                                                |
-| -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| STS 403 `unable to acquire impersonated credentials` / `The given credential is rejected by the attribute condition` | Provider `--attribute-condition` does not match (wrong org/group), or the JWT `aud` differs from `--allowed-audiences`. JWT `aud` = `$CI_SERVER_URL` with scheme, no trailing slash.                                                                                                                                                                                                                        |
-| STS 400 `Invalid value for "audience"`                                                                               | STS request `audience` must be `//iam.googleapis.com/projects/<NUM>/…/providers/<name>` — **no `https:` prefix**, and it uses the project **number**.                                                                                                                                                                                                                                                       |
-| STS 400 `mapped attribute google.subject exceeds the 127 bytes limit`                                                | The JWT `sub` is too long (deeply nested GitLab groups; long GitHub repo/environment names). Remap `google.subject` to a shorter claim, e.g. `assertion.project_path` (GitLab) — IAM here binds on attributes, not subject, so nothing else changes.                                                                                                                                                        |
-| `secrets create` fails with `FAILED_PRECONDITION` on `constraints/gcp.resourceLocations`                             | Org policy forbids global replication. Create with `--replication-policy=user-managed --locations=<allowed-region>` (check `gcloud org-policies describe gcp.resourceLocations --project=… --effective`).                                                                                                                                                                                                   |
-| `cloud Resource Manager API has not been used in project …` during the CI secret fetch                               | Enable `cloudresourcemanager.googleapis.com` on the central project — `get-secretmanager-secrets` uses it to resolve the project.                                                                                                                                                                                                                                                                           |
-| Secret Manager 403 `PERMISSION_DENIED` (CI) — right after setup                                                      | `principalSet` IAM bindings take a few minutes to propagate. Wait 2–5 minutes and retry before changing anything.                                                                                                                                                                                                                                                                                           |
-| Secret Manager 403 `PERMISSION_DENIED` (CI) — persistent                                                             | Either the `principalSet` binding is missing/wrong (check the attribute name — `repository_owner` vs `namespace_path` — and value), **or the grant is on the secret resource only — move it to project level** (field-verified, see §4).                                                                                                                                                                    |
-| `PERMISSION_DENIED` (developer)                                                                                      | Not in the developer Google group, or the group lacks `secretAccessor`.                                                                                                                                                                                                                                                                                                                                     |
-| Scripts are owned by the wrong account                                                                               | The secret was seeded from a stale machine-local `~/.clasprc.json`. Scripts cannot change owners across domains and the clasp token cannot even trash them (`drive.file` scope; scripts are created via the Apps Script API, so they are not "app files"). Fix: `clasp login` with the right account → rotate the secret → re-run `init.sh` per repo → the old owner deletes the orphaned scripts manually. |
-| GitLab job fails before script with `id_tokens` error                                                                | GitLab < 16.1 (variable expansion in `aud`) or < 15.7 (`id_tokens` itself). Upgrade or stay on legacy mode with an older template revision.                                                                                                                                                                                                                                                                 |
-| WIF works on `main` but not `dev` (GitLab)                                                                           | `GCP_WIF_PROVIDER` / `CLASPRC_SECRET` set as **protected** variables. Make them unprotected.                                                                                                                                                                                                                                                                                                                |
-| Air-gapped GitLab                                                                                                    | WIF needs egress to `sts.googleapis.com` + `secretmanager.googleapis.com`. Keep using legacy `CLASPRC_JSON`.                                                                                                                                                                                                                                                                                                |
+| Symptom | Likely cause |
+| --- | --- |
+| STS 403 `unable to acquire impersonated credentials` / `The given credential is rejected by the attribute condition` | Provider `--attribute-condition` does not match (wrong org/group), or the JWT `aud` differs from `--allowed-audiences`. JWT `aud` = `$CI_SERVER_URL` with scheme, no trailing slash. |
+| STS 400 `Invalid value for "audience"` | STS request `audience` must be `//iam.googleapis.com/projects/<NUM>/…/providers/<name>` — **no `https:` prefix**, and it uses the project **number**. |
+| STS 400 `mapped attribute google.subject exceeds the 127 bytes limit` | The JWT `sub` is too long (deeply nested GitLab groups; long GitHub repo/environment names). Remap `google.subject` to a shorter claim, e.g. `assertion.project_path` (GitLab) — IAM here binds on attributes, not subject, so nothing else changes. |
+| `secrets create` fails with `FAILED_PRECONDITION` on `constraints/gcp.resourceLocations` | Org policy forbids global replication. Create with `--replication-policy=user-managed --locations=<allowed-region>` (check `gcloud org-policies describe gcp.resourceLocations --project=… --effective`). |
+| `cloud Resource Manager API has not been used in project …` during the CI secret fetch | Enable `cloudresourcemanager.googleapis.com` on the central project — `get-secretmanager-secrets` uses it to resolve the project. |
+| Secret Manager 403 `PERMISSION_DENIED` (CI) — right after setup | `principalSet` IAM bindings take a few minutes to propagate. Wait 2–5 minutes and retry before changing anything. |
+| Secret Manager 403 `PERMISSION_DENIED` (CI) — persistent | Either the `principalSet` binding is missing/wrong (check the attribute name — `repository_owner` vs `namespace_path` — and value), **or the grant is on the secret resource only — move it to project level** (field-verified, see §4). |
+| `PERMISSION_DENIED` (developer) | Not in the developer Google group, or the group lacks `secretAccessor`. |
+| Scripts are owned by the wrong account | The secret was seeded from a stale machine-local `~/.clasprc.json`. Scripts cannot change owners across domains and the clasp token cannot even trash them (`drive.file` scope; scripts are created via the Apps Script API, so they are not "app files"). Fix: `clasp login` with the right account → rotate the secret → re-run `init.sh` per repo → the old owner deletes the orphaned scripts manually. |
+| GitLab job fails before script with `id_tokens` error | GitLab < 16.1 (variable expansion in `aud`) or < 15.7 (`id_tokens` itself). Upgrade or stay on legacy mode with an older template revision. |
+| WIF works on `main` but not `dev` (GitLab) | `GCP_WIF_PROVIDER` / `CLASPRC_SECRET` set as **protected** variables. Make them unprotected. |
+| Air-gapped GitLab | WIF needs egress to `sts.googleapis.com` + `secretmanager.googleapis.com`. Keep using legacy `CLASPRC_JSON`. |
